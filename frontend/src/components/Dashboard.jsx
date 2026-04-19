@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import Chatbot from './Chatbot';
 import { UploadCloud, CheckCircle, AlertTriangle, LogOut, MessageSquare, X, Activity } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE } from '../lib/api';
 
 export default function Dashboard() {
   const [dragActive, setDragActive] = useState(false);
@@ -62,7 +63,7 @@ export default function Dashboard() {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://localhost:8000/api/upload', {
+      const response = await fetch(`${API_BASE}/api/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -81,7 +82,7 @@ export default function Dashboard() {
       }, 2000); 
     } catch (error) {
       console.error('Error uploading file:', error);
-      alert('Upload failed. Please ensure the backend is running on http://localhost:8000');
+      alert('Upload failed. Please check your connection and try again.');
       setStatus('idle');
     }
   };

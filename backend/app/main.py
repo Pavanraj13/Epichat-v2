@@ -19,16 +19,21 @@ from database import init_db
 
 app = FastAPI(title="EpiChat Inference API", version="2.0")
 
-# Setup CORS — allow all common Vite / CRA dev-server ports so requests
-# are never blocked when Vite shifts ports (5173, 5174, 5175, etc.)
+# Build CORS origins list from env variable (for production) + local dev defaults
+_default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://localhost:8000",
+]
+_extra_origins = os.getenv("ALLOWED_ORIGINS", "")
+_allowed_origins = _default_origins + [
+    o.strip() for o in _extra_origins.split(",") if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://localhost:8000"
-    ],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

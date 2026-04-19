@@ -42,6 +42,7 @@ export default function Chatbot({ onClose }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [voiceError, setVoiceError] = useState('');
+  const [voiceSupported, setVoiceSupported] = useState(false);
   
   const endRef   = useRef(null);
   const inputRef = useRef(null);
@@ -55,38 +56,52 @@ export default function Chatbot({ onClose }) {
   // ── Speech Recognition Setup ───────────────────────────────────────────────
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = 'en-US';
-
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        setInputVal(transcript);
-        setIsListening(false);
-      };
-
-      recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        if (event.error === 'not-allowed') {
-          setVoiceError('Microphone access required');
-        } else {
-          setVoiceError('Speech detection failed');
-        }
-        setIsListening(false);
-        setTimeout(() => setVoiceError(''), 3000);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
+    if (!SpeechRecognition) {
+      // Firefox, Safari, or unsupported browser
+      setVoiceSupported(false);
+      return;
     }
+
+    setVoiceSupported(true);
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setInputVal(transcript);
+      setIsListening(false);
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'not-allowed') {
+        setVoiceError('Mic blocked — allow microphone in browser settings');
+      } else if (event.error === 'no-speech') {
+        setVoiceError('No speech detected — try again');
+      } else if (event.error === 'network') {
+        setVoiceError('Network error — voice needs internet connection');
+      } else {
+        setVoiceError(`Voice error: ${event.error}`);
+      }
+      setIsListening(false);
+      setTimeout(() => setVoiceError(''), 4000);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
   }, []);
 
   const toggleListening = () => {
+    if (!voiceSupported) {
+      setVoiceError('Voice not supported — use Chrome or Edge browser');
+      setTimeout(() => setVoiceError(''), 4000);
+      return;
+    }
     if (isListening) {
       recognitionRef.current?.stop();
     } else {
@@ -96,8 +111,8 @@ export default function Chatbot({ onClose }) {
         setIsListening(true);
       } catch (err) {
         console.error('Failed to start recognition:', err);
-        setVoiceError('Microphone access required');
-        setTimeout(() => setVoiceError(''), 3000);
+        setVoiceError('Could not start mic — allow microphone access in browser');
+        setTimeout(() => setVoiceError(''), 4000);
       }
     }
   };
@@ -266,9 +281,13 @@ export default function Chatbot({ onClose }) {
           type="button"
           onClick={toggleListening}
           className={`chat-voice-btn ${isListening ? 'listening' : ''}`}
+          title={!voiceSupported ? 'Voice input requires Chrome or Edge browser' : (isListening ? 'Click to stop listening' : 'Click to speak')}
           style={{ 
-            background: 'none', border: 'none', color: isListening ? '#ef4444' : 'var(--text-secondary)',
-            cursor: 'pointer', marginRight: 8, display: 'flex', alignItems: 'center'
+            background: 'none', border: 'none', 
+            color: !voiceSupported ? 'var(--text-secondary)' : (isListening ? '#ef4444' : 'var(--text-secondary)'),
+            opacity: !voiceSupported ? 0.4 : 1,
+            cursor: !voiceSupported ? 'not-allowed' : 'pointer', 
+            marginRight: 8, display: 'flex', alignItems: 'center'
           }}
         >
           {isListening ? <MicOff size={18} /> : <Mic size={18} />}

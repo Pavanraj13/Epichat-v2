@@ -46,6 +46,8 @@ Thumbs.db
 *.pt
 *.h5
 *.pkl
+# Exception: keep the production model weight (only 650KB)
+!backend/model_weights/epichat_realistic.pt
 
 # Logs
 *.log
@@ -53,5 +55,7 @@ logs/
 
 # FastAPI
 .env
+# Allow production env for Vercel build
+!frontend/.env.production
 *.db
 *.sqlite

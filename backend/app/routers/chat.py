@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 OPENAI_MODEL   = "gpt-4o-mini"
-GEMINI_MODEL   = "gemini-flash-latest"
+GEMINI_MODEL   = "gemini-2.0-flash"
 
 SYSTEM_PROMPT = (
     "You are EpiChat AI. Explain EEG results and epilepsy precautions. "
@@ -33,7 +33,7 @@ async def chat(req: ChatRequest):
     openai_key = os.getenv("OPENAI_API_KEY", "")
 
     # 1) Try Google Gemini API First (Free tier friendly)
-    if gemini_key and gemini_key != "AIzaSyAW0idFYOQ1XjLQXwNONICtzPYNoo1nfXQ":
+    if gemini_key:
         gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={gemini_key}"
         
         contents = []
