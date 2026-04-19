@@ -7,47 +7,72 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
-import torch
 import sys
 
 # Ensure repo root is on sys.path (for importing scripts/)
 sys.path.append(str(Path(__file__).resolve().parents[3]))
 
-# Suppress MNE verbose
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 os.environ.setdefault("MNE_LOGGING_LEVEL", "ERROR")
-try:
-    import mne
 
-    mne.set_log_level("ERROR")
-except ImportError:
-    mne = None
+# ── Lazy globals — loaded only on first inference call ────────────────────────
+# This keeps FastAPI startup RAM under 512MB on Render's free tier.
+# PyTorch + MNE together ~400MB; loading them at import time crashes the instance.
+_torch = None
+_mne = None
+_model = None
+_device = None
+_MODEL_READY = False
 
-from scripts.preprocess import EPOCH_SAMP, N_CHANNELS, TARGET_SFREQ, map_channels, zero_pad_to_18
-from models.epichat_model import EpiChatModel
 
+def _ensure_loaded():
+    """Import torch/MNE and load the model on first call only."""
+    global _torch, _mne, _model, _device, _MODEL_READY
 
-UPLOAD_DIR = Path("data/uploads")
+    if _MODEL_READY:
+        return True
+
+    # ── Import heavy deps lazily ──────────────────────────────────────────────
+    try:
+        import torch as _t
+        _torch = _t
+    except ImportError:
+        return False
+
+    try:
+        import mne as _m
+        _m.set_log_level("ERROR")
+        _mne = _m
+    except ImportError:
+        return False
+
+    # ── Import model class ────────────────────────────────────────────────────
+    from models.epichat_model import EpiChatModel
+
+    _device = _torch.device("cpu")  # Free tier has no GPU
+    model_path = Path(__file__).resolve().parent.parent.parent / "model_weights" / "epichat_realistic.pt"
+
+    try:
+        if model_path.exists():
+            m = EpiChatModel()
+            checkpoint = _torch.load(model_path, map_location=_device)
+            m.load_state_dict(checkpoint["model_state_dict"])
+            m.to(_device)
+            m.eval()
+            _model = m
+            _MODEL_READY = True
+    except Exception as e:
+        print(f"[EpiChat] Model load failed: {e}")
+        return False
+
+    return _MODEL_READY
+
+UPLOAD_DIR = Path("/app/backend/data/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = EpiChatModel()
-model_path = Path(__file__).resolve().parent.parent.parent / "model_weights" / "epichat_realistic.pt"
 
-_MODEL_READY = False
-try:
-    if model_path.exists():
-        checkpoint = torch.load(model_path, map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        model.to(device)
-        model.eval()
-        _MODEL_READY = True
-except Exception:
-    _MODEL_READY = False
-
-
-def _softmax_seizure_prob(logits: torch.Tensor) -> float:
-    probs = torch.nn.functional.softmax(logits, dim=1)
+def _softmax_seizure_prob(logits) -> float:
+    probs = _torch.nn.functional.softmax(logits, dim=1)
     return float(probs[0, 1].item())
 
 
@@ -87,12 +112,13 @@ def analyze_edf_to_summary(file_path: Path) -> Dict[str, Any]:
       - confidence: float (0..100)
       - seizure_channels: list[int]
     """
-    if mne is None:
-        raise RuntimeError("mne is not installed; cannot parse EDF files.")
-    if not _MODEL_READY:
-        raise RuntimeError(f"Model weights not loaded. Missing or invalid at {model_path}.")
+    # Lazy-load torch, MNE and model on first call
+    if not _ensure_loaded():
+        raise RuntimeError("Model or dependencies failed to load.")
 
-    raw = mne.io.read_raw_edf(str(file_path), preload=True, verbose=False)
+    from scripts.preprocess import EPOCH_SAMP, N_CHANNELS, TARGET_SFREQ, map_channels, zero_pad_to_18
+
+    raw = _mne.io.read_raw_edf(str(file_path), preload=True, verbose=False)
 
     raw_mapped = map_channels(raw.copy(), dataset="chbmit")
     if raw_mapped is None:
@@ -121,11 +147,11 @@ def analyze_edf_to_summary(file_path: Path) -> Dict[str, Any]:
     max_prob = 0.0
     max_epoch_idx = 0
 
-    with torch.no_grad():
+    with _torch.no_grad():
         for i in range(n_epochs):
             epoch_data = epochs[i].astype(np.float32)
-            x = torch.tensor(epoch_data, dtype=torch.float32).unsqueeze(0).to(device)
-            logits = model(x)
+            x = _torch.tensor(epoch_data, dtype=_torch.float32).unsqueeze(0).to(_device)
+            logits = _model(x)
             p = _softmax_seizure_prob(logits)
             max_prob = max(max_prob, p)
             if p == max_prob:

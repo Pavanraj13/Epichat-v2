@@ -7,7 +7,11 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install requirements first (better Docker layer caching)
+# Install CPU-only PyTorch FIRST (much smaller — fits Render's 512MB free tier)
+# Default 'torch' includes GPU/CUDA which is ~2GB and OOMs on free tier
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Copy and install remaining requirements (torch already installed above, skip it)
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
