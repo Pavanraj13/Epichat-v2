@@ -22,8 +22,8 @@ COPY scripts/ ./scripts/
 # Create necessary runtime directories
 RUN mkdir -p backend/data/uploads backend/data/db
 
-# Expose port
-EXPOSE 8000
+# Expose port — HuggingFace Spaces uses 7860, Render injects $PORT
+EXPOSE 7860
 
-# Run FastAPI from backend/app directory
-CMD ["sh", "-c", "cd /app/backend/app && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# $PORT injected by Render; HuggingFace Spaces defaults to 7860
+CMD ["sh", "-c", "cd /app/backend/app && uvicorn main:app --host 0.0.0.0 --port ${PORT:-7860}"]
